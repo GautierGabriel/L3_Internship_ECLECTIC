@@ -1,0 +1,211 @@
+---
+title: "DicoExpress interactif"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+date: "2024-06-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+```
+
+n
+# Intro
+
+give working directory path
+
+```{r set working directory}
+setwd("d:/Users/Gabriel/Documents/travail/ENSL/satge/EXP/dicoexpress")
+print(getwd())  
+# Vérifiez le répertoire de travail actuel
+source_path = "Sources_v2/"
+file_path = paste0(source_path, "Load_Functions.R")
+
+if (file.exists(file_path)) {
+  source(file_path)
+} else {
+  stop("Le fichier Load_Functions.R n'existe pas dans le chemin spécifié.")
+}
+
+
+Data_Directory = "./Data"
+Results_Directory = "./Results"
+Project_Name = "EXP3"
+```
+
+load functions
+
+```{r load functions, echo=FALSE, message=FALSE}
+Load_Functions(source_path)
+```
+
+# Data importation
+
+transform Salmon output in DicoExpress readable format
+
+```{r clean row names, message= F}
+clean_row_names(Data_Directory, Project_Name, "EXP3_Salmon_quant.sf")
+```
+
+transform xlx into TARGET file
+
+```{r echo=F}
+input_file = "Expe3_ANR_Compilation_081123 (1).xlsx"
+sample_list = "sample_list_2.txt"
+
+create_target_file(Data_Directory, Project_Name, input_file, sample_list)
+
+```
+
+set parameters
+
+```{r}
+Filter = NULL
+Sep = ","
+```
+
+load data
+
+```{r}
+Data_Files = Load_Data_Files(Data_Directory, Project_Name, Filter, Sep)
+
+Project_Name = Data_Files$Project_Name
+Target = Data_Files$Target
+Raw_Counts = Data_Files$Raw_Counts 
+Annotation = Data_Files$Annotation 
+Reference_Enrichment = Data_Files$Reference_Enrichment
+
+Filter_Counts <- Raw_Counts %>% 
+  dplyr::select(-RD_106_B)
+
+Filter_Target <- Target %>% 
+  filter(!row.names(Target)== "RD_106_B")
+```
+
+# Quality Control
+
+set parameters
+
+```{r}
+Color_Group =  NULL
+min.count = 30
+Normalization_Method = "TMM"
+Filter_Strategy = "filterByExpr"
+
+#number of marginal sample to display
+marginal_sample = 10
+```
+
+launch QC
+
+```{r}
+Load_Functions(source_path)
+
+Quality_Control(Data_Directory, Results_Directory, Project_Name, Filter_Target,
+                Filter_Counts, Color_Group,Min.count=min.count,Normalization_Method,marginal_sample)
+```
+
+# Statistical model
+
+param
+
+```{r}
+Replicate = TRUE
+Interaction = TRUE
+```
+
+launch
+
+```{r}
+Model = GLM_Contrasts(Results_Directory, Project_Name, Filter_Target, Replicate, Interaction)
+GLM_Model = Model$GLM_Model
+Contrasts = Model$Contrasts
+```
+
+# Differential Analysis
+
+param
+
+```{r}
+Alpha_DiffAnalysis = 0.05
+Index_Contrast = 1:29
+NbGenes_Profiles = 20
+NbGenes_Clustering = 50
+min.count = 30
+Normalization_Method = "TMM"
+```
+
+launch
+
+```{r}
+DiffAnalysis.edgeR(Data_Directory, Results_Directory, Project_Name,
+                   Filter_Target, Filter_Counts, GLM_Model, Contrasts, Index_Contrast
+                   , Alpha_DiffAnalysis, NbGenes_Profiles,
+                   NbGenes_Clustering, min.count, Normalization_Method)
+```
+
+# DEGs Enrichment
+
+```{r}
+Alpha_Enrichment = 0.05
+Title=NULL
+Enrichment(Results_Directory, Project_Name, Title, Reference_Enrichment, Alpha_Enrichment)
+```
+
+# Contrast Comparison
+
+param
+
+```{r}
+Title="infected_comparison"
+Groups_Contrast_Comparison = Contrasts$Contrasts[14:19]
+Operation="Union"
+```
+
+launch
+
+```{r}
+Contrast_Comparison(Data_Directory, Results_Directory, Project_Name, Title, Groups_Contrast_Comparison, Operation)
+```
+
+launch as a loop
+
+```{r}
+for (i in 1:5){
+  Contrast_Comparison(Data_Directory, Results_Directory, Project_Name, paste("Interaction with Genotypes",as.character(10*i+7),"to",as.character(10*(i+1))),
+                    Contrasts$Contrasts[10*i+7:10*(i+1)], "Union")
+}
+```
+
+# Co-expression
+
+```{r}
+Title="Interaction_with_Genotypes_1_and_2"
+Groups_Coexpression = Contrasts$Contrasts[1:2]
+Operation="Union"
+meanFilterCutoff=50
+```
+
+```{r}
+Coexpression_coseq(Data_Directory, Results_Directory, Project_Name, Title, Groups_Coexpression,Operation, Target, Raw_Counts,Color_Group=NULL,meanFilterCutoff)
+```
+
+# Cluster Enrichment
+
+```{r}
+Title="Interaction_with_Genotypes_1_and_2"
+Alpha_Enrichment = 0.05
+```
+
+```{r}
+Enrichment(Results_Directory, Project_Name, Title, Reference_Enrichment, Alpha_Enrichment)
+```
+
+# Save parameters and cluster version
+
+```{r}
+Save_Parameters()
+```
